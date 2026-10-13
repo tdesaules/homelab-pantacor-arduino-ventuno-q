@@ -135,7 +135,10 @@ def render(bundles, profile, device_path, output, *, overrides=(), layers=()):
     put('bsp/kernel.img', (bsp_dir / 'kernel.img').read_bytes())
     put('bsp/pantavisor', (output / 'bootstrap/initramfs-ventuno-q.cpio.gz').read_bytes())
     put('core/root.squashfs', (core_dir / 'rootfs.squashfs').read_bytes())
-    put('core/lxc.container.conf', core_config(core['memoryMiB'], core['cpuWeight'], 'k0s' in composition['containers']))
+    config = core_config(core['memoryMiB'], core['cpuWeight'], 'k0s' in composition['containers'])
+    if composition['bootContract'] == 'emmc-file-store-v1':
+        config += b'lxc.mount.entry = /mnt/pv-system/boot/pantavisor/state boot-state none bind,ro,create=dir 0 0\n'
+    put('core/lxc.container.conf', config)
     put('_config/core/home/root/.ssh/authorized_keys', ('\n'.join(device['authorizedKeys']) + '\n').encode())
     put('_config/core/etc/dropbear/dropbear_ed25519_host_key', key.read_bytes())
     put('_config/core/etc/ventuno-network.conf', f"ETHERNET_MAC='{device['ethernetMAC']}'\nSSH_PORT={core['settings']['sshPort']}\n".encode())
