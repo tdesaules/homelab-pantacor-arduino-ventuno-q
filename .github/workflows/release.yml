@@ -142,11 +142,11 @@ jobs:
       - name: Fetch exact build outputs
         run: |
           registry="ghcr.io/${GITHUB_REPOSITORY,,}"
-          for profile in base "$PROFILE"; do
-            if [ -d "dist/$profile" ]; then continue; fi
-            ref="$registry/build-$profile:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for component_profile in base "$PROFILE"; do
+            if [ -d "dist/$component_profile" ]; then continue; fi
+            ref="$registry/build-$component_profile:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             digest=$(oras resolve "$ref" --registry-config "$REGISTRY_AUTH_FILE")
-            python3 -m tools.pvbuild download-build --reference "${ref%:*}@$digest" --output "dist/$profile"
+            python3 -m tools.pvbuild download-build --reference "${ref%:*}@$digest" --output "dist/$component_profile"
           done
       - name: Smoke component executables
         run: python3 -m tools.pvbuild smoke --bundle "dist/$PROFILE"
