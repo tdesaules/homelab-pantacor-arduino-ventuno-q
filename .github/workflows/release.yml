@@ -1,0 +1,208 @@
+name: Build and publish
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a digest-addressed release catalogue candidate after qualification
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONUNBUFFERED: '1'
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends grub-common
+      - name: Check intended version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then
+            python3 -m tools.pvbuild check-version --tag "$REF_NAME"
+          else
+            python3 -m tools.pvbuild check-version
+          fi
+      - run: python3 -m tools.pvbuild check
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+  build:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [base, k0s]
+    env:
+      PROFILE: ${{ matrix.profile }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          version: 1.3.4
+      - name: Prepare hosted runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends podman binutils kmod squashfs-tools
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          df -h "$GITHUB_WORKSPACE"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: artifacts/downloads
+          key: downloads-${{ matrix.profile }}-${{ hashFiles('kas/*.yml', 'meta-ventuno/**/*.bb', 'meta-ventuno/**/*.inc', 'release/platform.lock.json') }}
+          restore-keys: downloads-${{ matrix.profile }}-
+      - name: Build profile
+        run: python3 -m tools.pvbuild build --profile "$PROFILE" --ci
+      - name: Package public components
+        run: |
+          python3 -m tools.pvbuild stage-build --profile "$PROFILE" --ci --output dist/deploy
+          rm -rf -- artifacts/yocto-ci
+          python3 -m tools.pvbuild package --profile "$PROFILE" --deploy-dir dist/deploy --output "dist/$PROFILE"
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_AUTH_FILE: ${{ runner.temp }}/registry.json
+        run: |
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$REGISTRY_AUTH_FILE"
+          echo "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE" >> "$GITHUB_ENV"
+      - name: Transfer build output through GHCR
+        run: |
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          python3 -m tools.pvbuild upload-build --bundle "dist/$PROFILE" \
+            --reference "$registry/build-$PROFILE:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Report disk usage
+        if: always()
+        run: |
+          df -h "$GITHUB_WORKSPACE" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "artifacts/metrics/build-$PROFILE.json" ]; then
+            cat "artifacts/metrics/build-$PROFILE.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Release temporary build space before cache upload
+        if: always()
+        run: rm -rf -- artifacts/yocto-ci
+  integration:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [base, k0s]
+    env:
+      PROFILE: ${{ matrix.profile }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          version: 1.3.4
+      - name: Install emulation and bootstrap tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-user qemu-efi-aarch64 \
+            grub-efi-arm64-bin grub-common e2fsprogs fdisk kmod cpio squashfs-tools dropbear-bin
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_AUTH_FILE: ${{ runner.temp }}/registry.json
+        run: |
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$REGISTRY_AUTH_FILE"
+          echo "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE" >> "$GITHUB_ENV"
+      - name: Fetch exact build outputs
+        run: |
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for profile in base "$PROFILE"; do
+            if [ -d "dist/$profile" ]; then continue; fi
+            ref="$registry/build-$profile:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            digest=$(oras resolve "$ref" --registry-config "$REGISTRY_AUTH_FILE")
+            python3 -m tools.pvbuild download-build --reference "${ref%:*}@$digest" --output "dist/$profile"
+          done
+      - name: Smoke component executables
+        run: python3 -m tools.pvbuild smoke --bundle "dist/$PROFILE"
+      - name: Provide native kubectl for the Kubernetes scenario
+        if: matrix.profile == 'k0s'
+        run: |
+          unsquashfs -no-progress -d artifacts/client-root dist/k0s/components/core-kubernetes/rootfs.squashfs usr/bin/kubectl
+          echo "$GITHUB_WORKSPACE/artifacts/client-root/usr/bin" >> "$GITHUB_PATH"
+      - name: Qualify the complete VM
+        run: |
+          if [ "$PROFILE" = k0s ]; then
+            python3 -m tools.pvbuild integration --base dist/base --k0s dist/k0s
+          else
+            python3 -m tools.pvbuild integration --base dist/base
+          fi
+  publish:
+    needs: integration
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          version: 1.3.4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends podman skopeo squashfs-tools
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_AUTH_FILE: ${{ runner.temp }}/registry.json
+        run: |
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$REGISTRY_AUTH_FILE"
+          echo "REGISTRY_AUTH_FILE=$REGISTRY_AUTH_FILE" >> "$GITHUB_ENV"
+      - name: Fetch qualified bundles and publish immutable references
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for profile in base k0s; do
+            ref="$registry/build-$profile:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            digest=$(oras resolve "$ref" --registry-config "$REGISTRY_AUTH_FILE")
+            python3 -m tools.pvbuild download-build --reference "${ref%:*}@$digest" --output "dist/$profile"
+          done
+          if [ "$REF_TYPE" = tag ]; then tag=$(python3 -m tools.pvbuild check-version); else tag="build-$GITHUB_SHA"; fi
+          python3 -m tools.pvbuild publish --bundle dist/base --bundle dist/k0s \
+            --registry "$registry" --tag "$tag" --output dist/publication
+          cat dist/publication/receipt.json >> "$GITHUB_STEP_SUMMARY"
