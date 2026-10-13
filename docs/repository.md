@@ -256,6 +256,8 @@ installer un essai ou redémarrer le matériel.
 | `install-native-platform.sh`, `start-native-platform.sh` | Migration vers le store natif, sauvegarde de l'ancien état et activation |
 | `check-native-platform.py` | Révision active, stabilité, ressources, identité k0s et reboots |
 | `resume-native-platform.sh` | Vérification hors ligne depuis le secours et réarmement du boot natif |
+| `capture-native-incident.py`, `monitor-native-incident.py` | Préservation des traces de reset et observation externe bornée |
+| `prepare-native-update-test.py`, `test-native-updates.py` | Préparation et qualification explicite d'un upgrade, downgrade et rollback sur faute |
 
 ### Collectes et diagnostics complémentaires
 

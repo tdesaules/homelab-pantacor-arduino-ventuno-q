@@ -76,12 +76,18 @@ un digest différent.
 
 ## Qualification restante
 
-Les builds locaux réussis ne valident pas encore les contraintes d'un runner
-GitHub standard. Le premier build froid doit mesurer temps, espace disque minimal
-et disponibilité des dépendances ARM64. Les métriques sont écrites dans
-`artifacts/metrics/` et reprises dans le résumé du job. La configuration CI
-corrigée a été vérifiée par `bitbake-getvar` ; le précédent build froid utilisait
-encore 12 jobs, donc ne constitue pas une mesure du profil limité à 2 jobs.
+Les contrôles rapides ont réussi sur GitHub. Le premier run complet
+[38465136067](https://github.com/tdesaules/homelab-pantacor-arduino-ventuno-q/actions/runs/38465136067)
+a construit et packagé la base (environ 1 h 32) et k0s (environ 1 h 48).
+Les runners avaient initialement 84–85 Gio libres. Les transferts GHCR ont
+ensuite échoué sur un flag d'authentification ORAS, corrigé par `af43873`.
+La validation des transferts puis de l'intégration hébergée reste à terminer.
 
-La nouvelle chaîne complète VM/GHCR n'a pas encore été exécutée. Les preuves VM
+Ces résultats valident la construction sur les runners effectivement fournis,
+pas une garantie de fonctionnement avec seulement 14 Gio libres. Les métriques
+sont écrites dans `artifacts/metrics/` et reprises dans le résumé du job.
+La configuration CI corrigée limite le parallélisme à 2 jobs ; sa valeur effective
+a aussi été vérifiée localement par `bitbake-getvar`.
+
+La nouvelle chaîne complète VM/GHCR n'a pas encore réussi de bout en bout. Les preuves VM
 historiques restent consultables dans [l'historique](history/README.md).

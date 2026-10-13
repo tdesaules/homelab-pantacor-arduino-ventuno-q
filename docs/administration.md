@@ -44,10 +44,10 @@ Le secours reste sélectionné jusqu'au réarmement explicite du boot natif.
 sur la carte ; son reboot est une opération séparée. Voir le
 [compte rendu de migration](history/native-platform-20261013.md).
 
-`pvcontrol steps show-progress current` n'a pas de résultat pour le seed initial
-provisionné directement : utiliser la révision active, `steps ls`, l'état des
-conteneurs et du gardien pour observer ce premier boot. Le suivi `DONE` concerne
-le cycle de mise à jour.
+`pvcontrol steps show-progress current` n'avait pas de résultat pour le seed
+initial provisionné directement. Après le cycle d'update et de retour vers
+`locals/0.1.0`, il indique maintenant `DONE`. Le suivi de progression décrit
+le cycle de mise à jour ; la santé du runtime reste un contrôle distinct.
 
 ## Ancien contrat du lab
 

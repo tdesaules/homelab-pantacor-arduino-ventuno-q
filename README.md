@@ -6,13 +6,19 @@ sont versionnées ; la distribution prévue utilise exclusivement GHCR.
 
 ## État du projet
 
+**Incident ouvert :** des resets spontanés ont conduit au secours. Leur cause
+n'est pas encore isolée ; voir [le diagnostic et les essais d'update](docs/history/native-incident-and-updates-20261013.md).
+
 - La carte utilise **`locals/0.1.0`**, core **0.8.0** et k0s **v1.36.4+k0s.1**
   avec le boot natif. Voir le [compte rendu matériel](docs/history/native-platform-20261013.md).
 - La révision locale est installée ; la release OS **0.1.0** n'est pas encore
   publiée sur GHCR ni associée à un tag Git.
-- Les builds locaux base/k0s, les bundles, les tests de binaires ARM64 et les
-  rendus privés ont été vérifiés. La chaîne GitHub Actions/GHCR et son intégration
-  complète sur runners hébergés restent à exécuter.
+- L'upgrade vers une candidate `locals/0.2.0`, le retour explicite à `0.1.0` et
+  le rollback automatique d'un core non prêt ont été validés sur matériel,
+  à noyau/initramfs constants. La carte est revenue sur `locals/0.1.0` en `DONE`.
+- Les builds locaux et hébergés base/k0s ainsi que leurs packagings ont réussi.
+  Les transferts GHCR et l'intégration hébergée de bout en bout restent à valider
+  après le correctif ORAS ; voir [build et CI](docs/build-ci.md).
 - Le [boot eMMC indépendant et son secours](docs/native-emmc.md) sont installés
   et qualifiés sur matériel, avec reboot et conservation du cluster. Les fichiers
   Ubuntu et l'ancien store sont conservés pour le retour arrière, mais ne sont

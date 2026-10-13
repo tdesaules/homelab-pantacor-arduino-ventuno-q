@@ -18,5 +18,7 @@ procédure d'installation générique. Les scripts correspondants sont dans
 [`lab/`](../lab/README.md).
 
 La carte utilise désormais [le runtime natif `locals/0.1.0`](history/native-platform-20261013.md).
+Les [resets spontanés restent en investigation](history/native-incident-and-updates-20261013.md) ;
+ce compte rendu décrit aussi les updates et rollbacks matériels validés.
 Cette installation locale ne constitue pas encore une publication de release ;
 `VERSION` désigne toujours la version prévue pour celle-ci.
