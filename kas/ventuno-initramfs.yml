@@ -1,0 +1,12 @@
+header:
+  version: 16
+  includes:
+    - base.yml
+    - k0s.yml
+target:
+  - pantavisor-initramfs
+  - ventuno-core-image
+  - ventuno-k0s-image
+local_conf_header:
+  historical_fixtures: |
+    PACKAGE_INSTALL:append:pn-pantavisor-initramfs = " ventuno-diagnostic"

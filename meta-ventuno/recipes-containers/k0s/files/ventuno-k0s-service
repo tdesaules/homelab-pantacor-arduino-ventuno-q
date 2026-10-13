@@ -1,0 +1,116 @@
+#!/bin/sh
+# A failed cluster stays inspectable without taking down the management core.
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[ ! -f /etc/ventuno/k0s.env ] || . /etc/ventuno/k0s.env
+K0S_HOST_RESERVE_MIB=${K0S_HOST_RESERVE_MIB:-1024}
+K0S_KUBE_RESERVE_MIB=${K0S_KUBE_RESERVE_MIB:-1024}
+K0S_EVICTION_MIB=${K0S_EVICTION_MIB:-512}
+K0S_POD_CIDR=${K0S_POD_CIDR:-10.244.0.0/16}
+K0S_SERVICE_CIDR=${K0S_SERVICE_CIDR:-10.96.0.0/12}
+K0S_MAX_PODS=${K0S_MAX_PODS:-40}
+K0S_DISABLED_COMPONENTS=${K0S_DISABLED_COMPONENTS-autopilot,metrics-server}
+umask 077
+mkdir -p /access /data/log /data/pods /var/lib/k0s
+exec >>/access/service.log 2>&1
+child=
+stop() {
+    trap - TERM INT
+    if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" || true; fi
+    sync
+    exit 0
+}
+trap stop TERM INT
+failed() {
+    echo "phase=failed reason=$1" > /access/status
+    while :; do sleep 5 & child=$!; wait "$child" || true; done
+}
+echo 'phase=preflight' > /access/status
+grep -q ' /var/lib/k0s ext4 ' /proc/mounts || failed persistent-storage
+test -f /sys/fs/cgroup/cgroup.controllers || failed cgroup-v2
+echo 'phase=waiting-for-time' > /access/status
+until [ -s /clock-status/time-ready ] && [ "$(date +%s)" -ge 1735689600 ]; do sleep 2; done
+mount --make-rshared /
+# Writable leaf for the node processes, with controllers delegated to pods.
+mkdir -p /sys/fs/cgroup/k0s-system
+for pid in $(cat /sys/fs/cgroup/cgroup.procs); do
+    echo "$pid" > /sys/fs/cgroup/k0s-system/cgroup.procs 2>/dev/null || true
+done
+for controller in $(cat /sys/fs/cgroup/cgroup.controllers); do
+    echo "+$controller" > /sys/fs/cgroup/cgroup.subtree_control
+done
+ip=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+test -n "$ip" || failed node-address
+printf '127.0.0.1 localhost\n::1 localhost\n%s ventuno-k0s\n' "$ip" > /etc/hosts
+case "$ip" in
+    10.0.2.*) printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf ;;
+    *) printf 'nameserver 1.1.1.1\nnameserver 9.9.9.9\n' > /etc/resolv.conf ;;
+esac
+chmod 644 /etc/hosts /etc/resolv.conf
+# Kubelet observes physical RAM. Subtract the host reserve as well as k0s's
+# own control-plane budget and an eviction margin before advertising pods.
+total_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+limit_bytes=$(cat /sys/fs/cgroup/memory.max)
+case "$limit_bytes" in ''|*[!0-9]*) failed missing-memory-limit ;; esac
+outside_kib=$((total_kib - limit_bytes / 1024))
+[ "$outside_kib" -ge $((K0S_HOST_RESERVE_MIB * 1024)) ] || outside_kib=$((K0S_HOST_RESERVE_MIB * 1024))
+[ "$total_kib" -gt $((outside_kib + (K0S_KUBE_RESERVE_MIB + K0S_EVICTION_MIB) * 1024)) ] || failed insufficient-memory
+printf 'HOST_MEMORY_KIB=%s\nK0S_MEMORY_MAX=%s\nSYSTEM_RESERVED_KIB=%s\nKUBE_RESERVED_KIB=%s\nEVICTION_KIB=%s\n' \
+    "$total_kib" "$limit_bytes" "$outside_kib" "$((K0S_KUBE_RESERVE_MIB * 1024))" "$((K0S_EVICTION_MIB * 1024))" > /access/resources.status
+cat > /etc/k0s/k0s.yaml <<EOF
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
+metadata:
+  name: ventuno-poc
+spec:
+  api:
+    address: $ip
+    sans: ["$ip", "127.0.0.1", "ventuno-k0s"]
+  telemetry:
+    enabled: false
+  network:
+    provider: kuberouter
+    podCIDR: $K0S_POD_CIDR
+    serviceCIDR: $K0S_SERVICE_CIDR
+  workerProfiles:
+    - name: default
+      values:
+        cgroupDriver: cgroupfs
+        resolvConf: /etc/resolv.conf
+        maxPods: $K0S_MAX_PODS
+        systemReserved:
+          memory: "${outside_kib}Ki"
+          cpu: "250m"
+        kubeReserved:
+          memory: "${K0S_KUBE_RESERVE_MIB}Mi"
+          cpu: "250m"
+        evictionHard:
+          memory.available: "${K0S_EVICTION_MIB}Mi"
+          nodefs.available: "10%"
+          imagefs.available: "15%"
+          nodefs.inodesFree: "5%"
+          imagefs.inodesFree: "5%"
+        enforceNodeAllocatable: ["pods"]
+EOF
+k0s sysinfo > /access/sysinfo.log 2>&1 || failed sysinfo
+echo 'phase=starting' > /access/status
+(
+    # containerd snapshot roots must be traversable by non-root pod users.
+    umask 022
+    exec k0s controller --single --config=/etc/k0s/k0s.yaml --disable-components="$K0S_DISABLED_COMPONENTS" --kubelet-extra-args=--hostname-override=ventuno-k0s
+) &
+child=$!
+while kill -0 "$child" 2>/dev/null; do
+    if [ -s /var/lib/k0s/pki/admin.conf ]; then
+        # Copy atomically; this directory is exposed read-only to management.
+        sed "s#https://localhost:6443#https://$ip:6443#g; s#https://127.0.0.1:6443#https://$ip:6443#g" /var/lib/k0s/pki/admin.conf > /access/admin.conf.new
+        chmod 600 /access/admin.conf.new
+        mv /access/admin.conf.new /access/admin.conf
+        echo 'phase=running' > /access/status
+        break
+    fi
+    sleep 2
+done
+if wait "$child"; then result=0; else result=$?; fi
+child=
+failed "k0s-exited-$result"

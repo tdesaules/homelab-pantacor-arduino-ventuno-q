@@ -1,0 +1,44 @@
+#!/bin/sh
+# Started by init.lxc, which forwards signals and reaps orphaned SSH children.
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+[ -f /etc/ventuno-revision-network ] || exit 2
+[ -f /etc/ventuno-core-release ] || exit 2
+mkdir -p /run /tmp
+mkdir -p /data/config /data/cache /data/state /data/share /data/kube-cache
+chmod 0700 /data/config /data/cache /data/state /data/share /data/kube-cache
+rm -f /data/dhcp.state /run/ventuno-dhcp.state
+boots=0
+if [ -f /data/boots ]; then read -r boots < /data/boots; fi
+case "$boots" in ''|*[!0-9]*) exit 2 ;; esac
+boots=$((boots + 1))
+printf '%s\n' "$boots" > /data/boots.tmp
+mv /data/boots.tmp /data/boots
+sync
+/usr/libexec/ventuno/network &
+network=$!
+/usr/libexec/ventuno/time-sync >> /data/time.log 2>&1 &
+clock=$!
+cleanup() {
+    kill "$network" "$clock" 2>/dev/null || true
+    wait "$network" 2>/dev/null || true
+    rm -f /data/dhcp.state
+    sync
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+ready=0
+while kill -0 "$network" 2>/dev/null; do
+    if ! kill -0 "$clock" 2>/dev/null; then
+        /usr/libexec/ventuno/time-sync >> /data/time.log 2>&1 &
+        clock=$!
+    fi
+    if [ "$ready" -eq 0 ] && [ -f /run/ventuno-dhcp.state ]; then
+        if pvcontrol signal ready; then
+            ready=1
+            echo "CORE_READY starts=$boots"
+        fi
+    fi
+    sleep 1
+done
+exit 1

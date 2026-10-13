@@ -1,0 +1,27 @@
+{
+  "status": "downloaded-and-sha256-verified",
+  "architecture": "arm64",
+  "kernel_release": "6.8.0-1078-qcom",
+  "packages": [
+    {
+      "name": "linux-image-6.8.0-1078-qcom",
+      "version": "6.8.0-1078.83",
+      "source": "linux-qcom",
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/universe/l/linux-qcom/linux-image-6.8.0-1078-qcom_6.8.0-1078.83_arm64.deb",
+      "sha256": "638001417cdc21a1df04f98f6dcbc1bef0b7725c39837c2577174379a8b8ea59"
+    },
+    {
+      "name": "linux-modules-6.8.0-1078-qcom",
+      "version": "6.8.0-1078.83",
+      "source": "linux-qcom",
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/universe/l/linux-qcom/linux-modules-6.8.0-1078-qcom_6.8.0-1078.83_arm64.deb",
+      "sha256": "724828537dc4c489103312cd96d38430889bcb4b9234816295f983b389010411"
+    },
+    {
+      "name": "linux-firmware-dragonwing",
+      "version": "20260612",
+      "url": "https://launchpad.net/~ubuntu-qcom-iot/+archive/ubuntu/qcom-ppa/+files/linux-firmware-dragonwing_20260612_arm64.deb",
+      "sha256": "0967315821a9bc71a1b038a96f29eec141e2ad33668acd20ccb901eb759f7f08"
+    }
+  ]
+}

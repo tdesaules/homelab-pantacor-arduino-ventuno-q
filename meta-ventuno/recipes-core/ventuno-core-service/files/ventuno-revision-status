@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+# pvcurl uses /tmp/http_req; serialize all service and SSH requests here.
+lock=/run/ventuno-revision-query.lock
+attempt=0
+until mkdir "$lock" 2>/dev/null; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -le 5 ] || exit 3
+    sleep 1
+done
+trap 'rm -rf "$lock"' EXIT
+case "${1:-status}" in
+    control) shift; pvcontrol "$@"; exit ;;
+    ready) pvcontrol signal ready; exit ;;
+    restart|stop)
+        case "${2:-}" in ''|*[!a-zA-Z0-9_.-]*) echo 'Specify a container name' >&2; exit 2 ;; esac
+        pvcontrol containers "$1" "$2"
+        exit ;;
+    status) ;;
+    *) exit 2 ;;
+esac
+echo '### Pantavisor containers'
+containers=$(pvcontrol containers ls)
+printf '%s\n' "$containers"
+echo '### Running revision'
+cat /pantavisor/device-meta/pantavisor.revision
+printf '\n'
+echo '### Current revision'
+pvcontrol steps get current
+echo '### Revision progress'
+pvcontrol steps show-progress current
+# Optional lab fixture: show its data only when that container is in the state.
+if printf '%s\n' "$containers" | grep -q '"name":"diagnostic"'; then
+    echo '### Persistent application data'
+    if [ -f /diagnostic-data/heartbeat.json ]; then
+        cat /diagnostic-data/boots /diagnostic-data/heartbeat.json
+    else
+        echo 'APPLICATION_NOT_READY'
+    fi
+fi
+echo '### Core'
+printf 'CORE_STARTS='
+cat /data/boots
+cat /run/ventuno-dhcp.state
+echo 'NETWORK_OWNER=core'
+cat /proc/1/comm
+echo '### Core release'
+cat /etc/ventuno-core-release
+if [ -f /run/ventuno-time.status ]; then
+    echo '### Clock synchronization'
+    cat /run/ventuno-time.status
+fi
+if [ -f /trial-status/guard.status ]; then
+    echo '### Host PID 1'
+    cat /trial-status/guard.status
+fi
+if [ -f /trial-status/app-storage.status ]; then
+    echo '### Application storage'
+    cat /trial-status/app-storage.status
+    if [ -d /diagnostic-data ]; then df -Pk /diagnostic-data; fi
+fi
+if [ -f /trial-status/health.status ]; then
+    echo '### Host health'
+    cat /trial-status/health.status
+fi

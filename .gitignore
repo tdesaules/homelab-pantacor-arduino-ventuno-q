@@ -1,0 +1,6 @@
+docs/access.local.md
+artifacts/
+__pycache__/
+dist/
+devices/*.local.json
+.venv/

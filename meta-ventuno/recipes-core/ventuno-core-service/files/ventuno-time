@@ -1,0 +1,29 @@
+#!/bin/sh
+# Core owns wall-clock synchronization; applications must not mint PKI at epoch zero.
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+[ ! -f /etc/ventuno-time.conf ] || . /etc/ventuno-time.conf
+NTP_SERVERS=${NTP_SERVERS:-"time.cloudflare.com pool.ntp.org"}
+set --
+for peer in $NTP_SERVERS; do set -- "$@" -p "$peer"; done
+if [ -d /boot-control ]; then rm -f /boot-control/time-ready; fi
+echo 'TIME_STATE=waiting-for-network' > /run/ventuno-time.status
+until [ -f /run/ventuno-dhcp.state ]; do sleep 1; done
+while :; do
+    echo 'TIME_STATE=synchronizing' > /run/ventuno-time.status
+    if timeout 120 ntpd -n -q "$@"; then
+        now=$(date +%s)
+        if [ "$now" -ge 1735689600 ]; then
+            printf 'TIME_STATE=synchronized\nTIME_SYNC_EPOCH=%s\n' "$now" > /run/ventuno-time.status
+            if [ -d /boot-control ]; then
+                printf '%s\n' "$now" > /boot-control/time-ready.new
+                mv /boot-control/time-ready.new /boot-control/time-ready
+            fi
+            cat /run/ventuno-time.status
+            break
+        fi
+    fi
+    sleep 5
+done
+# Keep disciplining the clock after the initial step, without serving NTP.
+exec ntpd -n "$@"

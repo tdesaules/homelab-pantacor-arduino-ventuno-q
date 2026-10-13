@@ -1,0 +1,13 @@
+{
+  "source": "SSH export after Ubuntu/Arduino updates and successful reboot",
+  "captured_utc": "2026-10-10",
+  "archive": "post-update-20261010/board-bsp-reference.tar.gz",
+  "sha256": "c3629dcbc48ef20c1bdc7ecafa10671f76e2938389944751e69927ba7f587278",
+  "os": "Ubuntu 24.04.5 LTS",
+  "kernel_release": "6.8.0-1084-qcom",
+  "kernel_package_version": "6.8.0-1084.89",
+  "kernel_sha256": "46dd8c27ee63eaec164bf97d0fe9fa4de29a4afe2daef541df9e4303dc9f9a11",
+  "kernel_config_sha256": "ee8c765a073e7cd87547cc4970b603aca216bed0037d7dc62ee9792d1365b6b9",
+  "held_packages": {"linux-firmware-dragonwing": "20260612"},
+  "note": "Post-update baseline selected by the reduced 1084 prototype. Not a complete eMMC backup."
+}

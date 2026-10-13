@@ -1,0 +1,9 @@
+{
+  "source": "SSH export of development board after initial setup",
+  "captured_utc": "2026-10-10",
+  "archive": "board-bsp-reference.tar.gz",
+  "sha256": "881ec965c64e0259c692110b7b86d8c6c4e27338a55cc6605449de3c03be4499",
+  "kernel_release": "6.8.0-1078-qcom",
+  "kernel_sha256": "5d62cbadebd18daef88d96fe5e1c9bb4151174425aaff3aaf58ecce5260f285c",
+  "note": "Installed kernel/modules differ from Ubuntu pool packages with the same version. This archive is local and not a full eMMC backup."
+}

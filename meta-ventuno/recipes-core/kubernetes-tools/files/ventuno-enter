@@ -1,0 +1,55 @@
+#!/bin/sh
+# Enter the local k0s node's namespaces through a short-lived privileged pod.
+set -eu
+case "${1:-}" in
+    k0s) shift ;;
+    *) echo 'Usage: ventuno-enter k0s [COMMAND [ARG...]]' >&2; exit 2 ;;
+esac
+[ "$#" -gt 0 ] || set -- /bin/sh
+config=${KUBECONFIG:-/k0s-access/admin.conf}
+[ -r "$config" ] || { echo 'The k0s kubeconfig is not available' >&2; exit 1; }
+pod="ventuno-enter-$(cat /proc/sys/kernel/random/uuid)"
+created=0
+kube() { kubectl --kubeconfig="$config" --request-timeout=20s "$@"; }
+cleanup() {
+    result=$?
+    trap - EXIT
+    if [ "$created" -eq 1 ]; then
+        kube -n kube-system delete pod "$pod" --wait=false --ignore-not-found >/dev/null 2>&1 || true
+    fi
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+created=1
+kube create -f - >/dev/null <<EOF
+{
+  "apiVersion": "v1", "kind": "Pod",
+  "metadata": {"name": "$pod", "namespace": "kube-system", "labels": {"app.kubernetes.io/name": "ventuno-admin-shell"}},
+  "spec": {
+    "nodeName": "ventuno-k0s", "hostPID": true, "hostNetwork": true,
+    "restartPolicy": "Never", "activeDeadlineSeconds": 3600, "terminationGracePeriodSeconds": 1,
+    "automountServiceAccountToken": false,
+    "containers": [{
+      "name": "shell",
+      "image": "docker.io/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e",
+      "command": ["sleep", "3600"],
+      "securityContext": {"privileged": true, "runAsUser": 0},
+      "resources": {"requests": {"cpu": "10m", "memory": "8Mi"}, "limits": {"memory": "256Mi"}}
+    }]
+  }
+}
+EOF
+if ! kube -n kube-system wait --for=condition=Ready "pod/$pod" --timeout=90s >/dev/null; then
+    kube -n kube-system describe pod "$pod" >&2 || true
+    exit 1
+fi
+terminal=-i
+if [ -t 0 ] && [ -t 1 ]; then terminal=-it; fi
+kube -n kube-system exec --request-timeout=0 "$terminal" "$pod" -c shell -- \
+    env -i HOME=/home/root USER=root LOGNAME=root TERM="${TERM:-xterm-256color}" \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    KUBECONFIG=/var/lib/k0s/pki/admin.conf \
+    nsenter -t 1 -m -u -i -n -p -r -w -- "$@"

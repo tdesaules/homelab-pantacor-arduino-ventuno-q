@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "nvme-apps",
+  "device": "/dev/nvme0n1",
+  "model": "NE-128 2242",
+  "serial": "0012327000631",
+  "size_bytes": 128035676160,
+  "filesystem_uuid": "5ccb2c2f-c0f7-44a1-a291-b261a7d060a3",
+  "partition_uuid": "4f660ffa-861d-4bba-869e-52c393fefc17",
+  "disk_guid": "9b5ae2bd-e2d8-414d-9c7a-849ad102cebe",
+  "label": "pv-appdata"
+}

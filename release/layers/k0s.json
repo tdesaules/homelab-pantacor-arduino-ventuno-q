@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "name": "k0s",
+  "requires": ["base"],
+  "patch": {
+    "containers": {
+      "core": {"artifact": "core-kubernetes"},
+      "k0s": {
+        "artifact": "k0s",
+        "hostReserveMiB": 1024,
+        "kubeReserveMiB": 1024,
+        "evictionMiB": 512,
+        "settings": {
+          "podCIDR": "10.244.0.0/16",
+          "serviceCIDR": "10.96.0.0/12",
+          "maxPods": 40,
+          "disabledComponents": ["autopilot", "metrics-server"]
+        }
+      }
+    }
+  }
+}

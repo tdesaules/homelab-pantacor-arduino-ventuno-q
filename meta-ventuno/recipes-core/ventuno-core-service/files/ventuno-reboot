@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+[ -d /boot-control ] || { echo 'Autonomous boot control is not mounted' >&2; exit 2; }
+case "${1:-pantavisor}" in
+    ubuntu|pantavisor) printf '%s\n' "${1:-pantavisor}" > /boot-control/next ;;
+    *) echo 'Usage: ventuno-reboot [pantavisor|ubuntu]' >&2; exit 2 ;;
+esac
+ventuno-revision-status control cmd reboot

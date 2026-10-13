@@ -1,0 +1,8 @@
+header:
+  version: 16
+target:
+  - ventuno-core-image
+  - ventuno-k0s-image
+local_conf_header:
+  kubernetes_clients: |
+    VENTUNO_KUBERNETES_TOOLS = "1"
