@@ -5,10 +5,21 @@ import unittest
 from unittest.mock import patch
 from tools.pvbuild.build import verify_bundle
 from tools.pvbuild.model import canonical, digest
-from tools.pvbuild.oci import check_destination
+from tools.pvbuild.oci import check_destination, oras_command
 
 
 class BundleTests(unittest.TestCase):
+    def test_copy_authentication_is_scoped_to_the_remote_endpoint(self):
+        with patch.dict('os.environ', {'REGISTRY_AUTH_FILE': '/tmp/registry.json'}):
+            upload = oras_command('cp', '--from-oci-layout', 'layout:artifact', 'ghcr.io/example/build:test')
+            self.assertIn('--to-registry-config', upload)
+            self.assertNotIn('--registry-config', upload)
+            self.assertNotIn('--from-registry-config', upload)
+            download = oras_command('cp', '--to-oci-layout', 'ghcr.io/example/build:test', 'layout:artifact')
+            self.assertIn('--from-registry-config', download)
+            self.assertNotIn('--to-registry-config', download)
+            self.assertIn('--registry-config', oras_command('pull', 'ghcr.io/example/build:test'))
+
     def test_content_verification_rejects_changes_and_extra_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

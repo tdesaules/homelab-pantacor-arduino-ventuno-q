@@ -21,7 +21,12 @@ IMAGE_LAYER = 'application/vnd.oci.image.layer.v1.tar+gzip'
 def oras_command(*args):
     command = ['oras', *args]
     if os.environ.get('REGISTRY_AUTH_FILE'):
-        command += ['--registry-config', os.environ['REGISTRY_AUTH_FILE']]
+        auth = os.environ['REGISTRY_AUTH_FILE']
+        if args and args[0] in ('cp', 'copy'):
+            if '--from-oci-layout' not in args: command += ['--from-registry-config', auth]
+            if '--to-oci-layout' not in args: command += ['--to-registry-config', auth]
+        else:
+            command += ['--registry-config', auth]
     return command
 
 
